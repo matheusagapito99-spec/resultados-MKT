@@ -11,6 +11,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:stats": "tsx scripts/db-stats.ts",
     "moskit:introspect": "tsx scripts/moskit-introspect.ts",
     "moskit:sync": "tsx scripts/moskit-sync.ts"
   },
