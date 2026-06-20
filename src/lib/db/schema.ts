@@ -97,6 +97,8 @@ export const imobiliarias = pgTable(
     cidade: text("cidade"),
     uf: text("uf"),
     segmento: text("segmento"),
+    /** ID da imobiliária na plataforma Avalyst (custom field da company). */
+    avalystId: text("avalyst_id"),
 
     sdrId: integer("sdr_id").references(() => users.id),
     gestorId: integer("gestor_id").references(() => users.id),
@@ -189,6 +191,61 @@ export const imobiliariaStageHistory = pgTable(
   (t) => [
     index("ish_imob_idx").on(t.imobiliariaId),
     index("ish_imob_entered_idx").on(t.imobiliariaId, t.enteredAt),
+  ],
+);
+
+/**
+ * Negócios (deals) do Moskit — espelho. A origem (UTM/inbound) e o funil vivem
+ * aqui; negócios da pipeline "Gestão de Propostas" são as propostas de contrato
+ * (name = ticket Avalyst, price = valor). Ligados à imobiliária via company.
+ */
+export const deals = pgTable(
+  "deals",
+  {
+    id: serial("id").primaryKey(),
+    moskitId: text("moskit_id").notNull().unique(),
+    name: text("name"), // p/ Gestão de Propostas = ticket (ID Avalyst)
+    imobiliariaId: integer("imobiliaria_id").references(() => imobiliarias.id),
+    moskitCompanyId: text("moskit_company_id"),
+    moskitContactId: text("moskit_contact_id"),
+    ownerId: integer("owner_id").references(() => users.id),
+
+    pipelineId: text("pipeline_id"),
+    pipelineName: text("pipeline_name"),
+    stageId: text("stage_id"),
+    stageName: text("stage_name"),
+    funnelStep: funnelStep("funnel_step"),
+    /** pipeline "Gestão de Propostas" → proposta/contrato. */
+    isProposta: boolean("is_proposta").default(false).notNull(),
+
+    status: text("status"), // OPEN | WON | LOST
+    valueCents: bigint("value_cents", { mode: "number" }), // price * 100 (reais→centavos)
+    lostReason: text("lost_reason"),
+
+    dealCreatedAt: timestamp("deal_created_at", { withTimezone: true }),
+    closeDate: timestamp("close_date", { withTimezone: true }),
+
+    // Origem capturada no próprio negócio
+    utmSource: text("utm_source"),
+    utmMedium: text("utm_medium"),
+    utmCampaign: text("utm_campaign"),
+    utmContent: text("utm_content"),
+    utmTerm: text("utm_term"),
+    inboundOriginRaw: text("inbound_origin_raw"),
+    cidade: text("cidade"),
+    uf: text("uf"),
+
+    raw: jsonb("raw"),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("deal_imob_idx").on(t.imobiliariaId),
+    index("deal_company_idx").on(t.moskitCompanyId),
+    index("deal_owner_idx").on(t.ownerId),
+    index("deal_stage_idx").on(t.stageId),
+    index("deal_status_idx").on(t.status),
+    index("deal_proposta_idx").on(t.isProposta),
+    index("deal_created_idx").on(t.dealCreatedAt),
   ],
 );
 

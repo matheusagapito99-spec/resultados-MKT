@@ -11,7 +11,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "moskit:introspect": "tsx scripts/moskit-introspect.ts"
+    "moskit:introspect": "tsx scripts/moskit-introspect.ts",
+    "moskit:sync": "tsx scripts/moskit-sync.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
