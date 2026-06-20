@@ -12,13 +12,25 @@ let _db: NeonHttpDatabase<typeof schema> | null = null;
  */
 export function getDb(): NeonHttpDatabase<typeof schema> {
   if (!_db) {
-    const url = process.env.DATABASE_URL;
-    if (!url) {
-      throw new Error(
-        "DATABASE_URL não definida. Configure no .env.local (dev) ou no Vercel.",
-      );
-    }
-    _db = drizzle(neon(url), { schema });
+    _db = drizzle(neon(requireUrl()), { schema });
   }
   return _db;
+}
+
+let _sql: ReturnType<typeof neon> | null = null;
+
+/** Cliente SQL cru (neon) para consultas agregadas das métricas. */
+export function getSql(): ReturnType<typeof neon> {
+  if (!_sql) _sql = neon(requireUrl());
+  return _sql;
+}
+
+function requireUrl(): string {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL não definida. Configure no .env.local (dev) ou no Vercel.",
+    );
+  }
+  return url;
 }
