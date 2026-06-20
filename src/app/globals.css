@@ -1,0 +1,185 @@
+@import "tailwindcss";
+
+/* Dark mode driven by a `.dark` class on <html> (toggled by JS), not the OS. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------ *
+ * Design tokens — Mira Design System
+ * Names map raw CSS vars (which flip per theme) into Tailwind utilities
+ * e.g. bg-surface, text-fg, text-muted, border-border, bg-brand …
+ * ------------------------------------------------------------------ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-border: var(--border-c);
+  --color-border-strong: var(--border-strong);
+
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-fg: var(--brand-fg);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --color-chart-1: #6366f1;
+  --color-chart-2: #0ea5e9;
+  --color-chart-3: #10b981;
+  --color-chart-4: #f59e0b;
+  --color-chart-5: #ef4444;
+  --color-chart-6: #8b5cf6;
+  --color-chart-7: #14b8a6;
+  --color-chart-8: #f472b6;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --animate-fade-in: fade-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-rise: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Light theme (default) */
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --fg: #0b0d12;
+  --muted: #5b6470;
+  --faint: #8b94a3;
+  --border-c: #e6e8ec;
+  --border-strong: #d4d8df;
+
+  --brand: #6366f1;
+  --brand-strong: #5457e5;
+  --brand-soft: #eef0ff;
+  --brand-fg: #ffffff;
+
+  --success: #059669;
+  --success-soft: #ecfdf5;
+  --warning: #d97706;
+  --warning-soft: #fffbeb;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --info: #0284c7;
+  --info-soft: #f0f9ff;
+
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.12);
+}
+
+/* Dark theme */
+.dark {
+  --bg: #0a0a0b;
+  --bg-subtle: #111113;
+  --surface: #161618;
+  --surface-2: #1c1c1f;
+  --fg: #ecedee;
+  --muted: #9ba1a9;
+  --faint: #6b7280;
+  --border-c: #26262a;
+  --border-strong: #34343a;
+
+  --brand: #818cf8;
+  --brand-strong: #6366f1;
+  --brand-soft: #1a1a3a;
+  --brand-fg: #0a0a0b;
+
+  --success: #34d399;
+  --success-soft: #06281e;
+  --warning: #fbbf24;
+  --warning-soft: #2a1c05;
+  --danger: #f87171;
+  --danger-soft: #2a0c0c;
+  --info: #38bdf8;
+  --info-soft: #06222b;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+@layer base {
+  * {
+    border-color: var(--border-c);
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--brand) 28%, transparent);
+  }
+  /* Numbers align in tables / KPIs */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+/* Refined scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+  background-clip: content-box;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
