@@ -1,66 +1,82 @@
 /**
  * Mapa de campos Moskit → modelo de atribuição da Mira.
+ * CONFIRMADO pela descoberta (2026-06-20) — ver docs/DESCOBERTA-MOSKIT.md.
  *
- * Esta é a "costura" entre o CRM e o nosso schema. As origens (Marketing/UTM e
- * Inbound) normalmente chegam ao Moskit como CUSTOM FIELDS vindos da landing
- * page / automação de marketing. Os nomes/chaves reais variam por conta — por
- * isso são preenchidos AQUI depois de rodar `npm run moskit:introspect`.
- *
- * Enquanto não confirmado, o sync usa estes nomes como tentativa e registra em
- * `sync_runs` quando um campo esperado não é encontrado.
+ * Modelo real:
+ *  - IMOBILIÁRIA = `project` (Moskit "Projetos"). Cada projeto lista seus `deals[]`.
+ *  - A ORIGEM (UTM + Origem Inbound) vive nos `deals` (negócios), como custom fields.
+ *  - Para atribuir origem à imobiliária, casamos projeto → deals[] e usamos o deal de
+ *    ENTRADA (mais antigo com dados de origem) como atribuição imutável.
+ *  - Funil = pipelines/stages dos deals. Garantias/contratos = deals ganhos na
+ *    pipeline "Gestão de Propostas".
  */
 export interface MoskitFieldMap {
-  /** Qual recurso do Moskit representa a imobiliária (lead/parceiro). */
-  imobiliariaEntity: "company" | "deal";
+  imobiliariaEntity: "project";
 
-  /** Chaves dos custom fields de UTM (Origem de Marketing). */
+  /** Custom fields de UTM (Origem de Marketing) — todos no módulo DEAL, tipo TEXT. */
   utm: {
-    source?: string;
-    medium?: string;
-    campaign?: string;
-    content?: string;
-    term?: string;
-    landingPage?: string;
-    conversionDate?: string;
+    source: string;
+    medium: string;
+    campaign: string;
+    content: string;
+    term: string;
   };
 
-  /** Chave do custom field que carrega a Origem Inbound (tipo de conversão). */
-  inboundOrigin?: string;
+  /** Outros custom fields úteis no DEAL. */
+  dealFields: {
+    cidade: string;
+    estado: string;
+    /** Origem Inbound — SINGLE_OPTION "Origem Lead". */
+    origemInbound: string;
+    etapaCadastro: string;
+  };
 
-  /** Campos de papéis. */
+  /** jobTitles que identificam papéis (campo `team` está vazio na conta). */
   roles: {
-    /** Como identificar SDR vs Gestor entre os `users` do Moskit. */
-    sdrTeamName?: string;
-    gestorTeamName?: string;
+    sdrJobTitles: string[];
+    gestorJobTitles: string[];
   };
 
-  /** Nomes de etapas do Moskit → passo normalizado do funil. */
-  stageToFunnelStep: Record<string, "lead" | "qualificacao" | "reuniao" | "cadastro" | "ativa" | "churn">;
+  /** Nome da pipeline cujo "ganho" representa contrato/garantia. */
+  contractPipelineName: string;
+
+  /** Nome da etapa do Moskit → passo normalizado do funil. */
+  stageToFunnelStep: Record<
+    string,
+    "lead" | "qualificacao" | "reuniao" | "cadastro" | "ativa" | "churn"
+  >;
 }
 
-/** Valores PROVISÓRIOS — confirmar/ajustar após a descoberta. */
 export const fieldMap: MoskitFieldMap = {
-  imobiliariaEntity: "company",
+  imobiliariaEntity: "project",
   utm: {
-    source: "utm_source",
-    medium: "utm_medium",
-    campaign: "utm_campaign",
-    content: "utm_content",
-    term: "utm_term",
-    landingPage: "landing_page",
-    conversionDate: "data_conversao",
+    source: "CF_3LvDvEi4CLR67m6a", // utm_source
+    medium: "CF_wPVm2Vi2CP64GmK6", // utm_medium
+    campaign: "CF_42AmaJiZCvEp0Djl", // utm_campaign
+    content: "CF_Pj3qYeieCWJGZqQe", // utm_content
+    term: "CF_Lo1qjyi1C46Y6Der", // utm_term
   },
-  inboundOrigin: "origem_inbound",
+  dealFields: {
+    cidade: "CF_A4wMWNigCBLO3qB8", // Cidade
+    estado: "CF_6rRmweivCyoOnq4X", // Estado
+    origemInbound: "CF_oJZmP1i9iQAvKDgv", // "Origem Lead" (SINGLE_OPTION)
+    etapaCadastro: "CF_oJZmP1i9iQpa5Dgv", // "Etapa do cadastro" (SINGLE_OPTION)
+  },
   roles: {
-    sdrTeamName: "SDR",
-    gestorTeamName: "Gestor de Contas",
+    sdrJobTitles: ["Sales Development Representative"],
+    gestorJobTitles: ["Account Manager", "Account Maneger"], // grafias reais na conta
   },
+  contractPipelineName: "Gestão de Propostas",
   stageToFunnelStep: {
-    // "Nome da etapa no Moskit": "passo normalizado"
-    // Preencher após a descoberta, ex.:
-    // "Lead": "lead",
-    // "Reunião realizada": "reuniao",
-    // "Cadastro": "cadastro",
-    // "Ativa": "ativa",
+    "Novo lead": "lead",
+    Discovery: "qualificacao",
+    "Conexão": "qualificacao",
+    "Qualificação": "qualificacao",
+    "Reunião Agendada": "reuniao",
+    "Apresentação Realizada": "cadastro",
+    "Pendente de Alteração": "ativa",
+    Aprovadas: "ativa",
+    "Pendente de Assinatura": "ativa",
+    "Pendente de Ativação": "ativa",
   },
 };

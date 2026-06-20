@@ -2,11 +2,13 @@
  * Cliente da API do Moskit CRM (V2).
  * Base: https://api.moskitcrm.com/v2  ·  Auth: header `apikey`.
  *
- * Os caminhos de endpoint e o esquema de paginação abaixo são best-effort a
- * partir da documentação pública e DEVEM ser confirmados pelo script de
- * descoberta (`npm run moskit:introspect`) contra a conta real.
+ * Paginação (confirmada na descoberta): por CURSOR via `?nextPageToken=<token>`.
+ * `?page` é ignorado; página fixa de 10. O total vem em `x-moskit-listing-total`
+ * e o próximo cursor em `x-moskit-listing-next-page-token`.
+ * Rate limit: ~6/seg e 240/min → respeitamos ~3,5/seg + retry com backoff em 429/5xx.
  */
 const DEFAULT_BASE_URL = "https://api.moskitcrm.com/v2";
+const MIN_INTERVAL_MS = 280; // ~3,5 req/seg, abaixo do limite de 6/seg e 240/min
 
 export interface MoskitClientOptions {
   apiKey?: string;
@@ -25,12 +27,20 @@ export class MoskitError extends Error {
   }
 }
 
+export interface ListResult<T> {
+  data: T[];
+  total: number;
+  nextToken: string | null;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class MoskitClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly maxRetries: number;
+  /** Gate de rate limit: garante o intervalo mínimo entre requisições. */
+  private gate: Promise<void> = Promise.resolve();
 
   constructor(opts: MoskitClientOptions = {}) {
     const apiKey = opts.apiKey ?? process.env.MOSKIT_API_KEY;
@@ -40,18 +50,27 @@ export class MoskitClient {
       );
     }
     this.apiKey = apiKey;
-    this.baseUrl = (opts.baseUrl ?? process.env.MOSKIT_BASE_URL ?? DEFAULT_BASE_URL).replace(
-      /\/$/,
-      "",
-    );
-    this.maxRetries = opts.maxRetries ?? 4;
+    this.baseUrl = (
+      opts.baseUrl ??
+      process.env.MOSKIT_BASE_URL ??
+      DEFAULT_BASE_URL
+    ).replace(/\/$/, "");
+    this.maxRetries = opts.maxRetries ?? 5;
   }
 
-  /** GET genérico com retry/backoff em 429 e 5xx. */
-  async get<T = unknown>(
+  /** Serializa as chamadas com intervalo mínimo (rate limit amigável). */
+  private async throttle(): Promise<void> {
+    const prev = this.gate;
+    let release!: () => void;
+    this.gate = new Promise((r) => (release = r));
+    await prev;
+    setTimeout(release, MIN_INTERVAL_MS);
+  }
+
+  private async request(
     path: string,
     params?: Record<string, string | number | undefined>,
-  ): Promise<T> {
+  ): Promise<{ json: unknown; headers: Headers }> {
     const url = new URL(`${this.baseUrl}/${path.replace(/^\//, "")}`);
     if (params) {
       for (const [k, v] of Object.entries(params)) {
@@ -60,21 +79,22 @@ export class MoskitClient {
     }
 
     let attempt = 0;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
+    for (;;) {
+      await this.throttle();
       const res = await fetch(url, {
         headers: { apikey: this.apiKey, accept: "application/json" },
       });
 
-      if (res.ok) {
-        return (await res.json()) as T;
-      }
+      if (res.ok) return { json: await res.json(), headers: res.headers };
 
       const retryable = res.status === 429 || res.status >= 500;
       if (retryable && attempt < this.maxRetries) {
-        const wait =
-          Number(res.headers.get("retry-after")) * 1000 ||
-          Math.min(1000 * 2 ** attempt, 8000);
+        const resetSec =
+          Number(res.headers.get("ratelimit-reset")) ||
+          Number(res.headers.get("retry-after"));
+        const wait = resetSec
+          ? resetSec * 1000 + 100
+          : Math.min(500 * 2 ** attempt, 8000);
         attempt += 1;
         await sleep(wait);
         continue;
@@ -84,7 +104,7 @@ export class MoskitClient {
       try {
         body = await res.json();
       } catch {
-        body = await res.text().catch(() => undefined);
+        body = undefined;
       }
       throw new MoskitError(
         `Moskit GET ${path} falhou (${res.status})`,
@@ -94,57 +114,65 @@ export class MoskitClient {
     }
   }
 
-  /**
-   * Itera todas as páginas de um recurso de listagem.
-   * `pageParam`/`sizeParam` e o tamanho ajustáveis conforme a descoberta.
-   */
+  /** GET simples (objeto ou array, sem metadados de paginação). */
+  async get<T = unknown>(
+    path: string,
+    params?: Record<string, string | number | undefined>,
+  ): Promise<T> {
+    return (await this.request(path, params)).json as T;
+  }
+
+  /** Uma página de uma listagem, com total e cursor para a próxima. */
+  async list<T = unknown>(
+    path: string,
+    params?: Record<string, string | number | undefined>,
+  ): Promise<ListResult<T>> {
+    const { json, headers } = await this.request(path, params);
+    const data = (Array.isArray(json) ? json : []) as T[];
+    return {
+      data,
+      total: Number(headers.get("x-moskit-listing-total")) || data.length,
+      nextToken: headers.get("x-moskit-listing-next-page-token") || null,
+    };
+  }
+
+  /** Itera TODAS as páginas de um recurso via cursor `nextPageToken`. */
   async *paginate<T = unknown>(
     path: string,
-    {
-      params = {},
-      pageParam = "page",
-      sizeParam = "size",
-      size = 100,
-      startPage = 1,
-    }: {
-      params?: Record<string, string | number | undefined>;
-      pageParam?: string;
-      sizeParam?: string;
-      size?: number;
-      startPage?: number;
-    } = {},
+    params: Record<string, string | number | undefined> = {},
   ): AsyncGenerator<T, void, unknown> {
-    let page = startPage;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const res = await this.get<unknown>(path, {
+    let token: string | null = null;
+    let prev: string | null = null;
+    for (;;) {
+      const page: ListResult<T> = await this.list<T>(path, {
         ...params,
-        [pageParam]: page,
-        [sizeParam]: size,
+        ...(token ? { nextPageToken: token } : {}),
       });
-      const items = Array.isArray(res)
-        ? (res as T[])
-        : ((res as { data?: T[]; items?: T[] }).data ??
-          (res as { items?: T[] }).items ??
-          []);
-      if (!items.length) return;
-      for (const item of items) yield item;
-      if (items.length < size) return;
-      page += 1;
+      for (const item of page.data) yield item;
+      if (!page.data.length || !page.nextToken || page.nextToken === prev) return;
+      prev = token;
+      token = page.nextToken;
     }
   }
 
-  // --- Helpers nomeados (paths a confirmar na descoberta) ---
+  // --- Metadados ---
   pipelines = () => this.get("pipelines");
   stages = () => this.get("stages");
   users = () => this.get("users");
-  /** Metadados de campos (inclui custom fields) por entidade. */
-  fields = (entity: "deals" | "contacts" | "companies") =>
-    this.get(`fields/${entity}`);
+  customField = (id: string) => this.get(`customFields/${id}`);
+
+  // --- Detalhe ---
+  deal = (id: number | string) => this.get(`deals/${id}`);
+  project = (id: number | string) => this.get(`projects/${id}`);
+  company = (id: number | string) => this.get(`companies/${id}`);
+
+  // --- Listagens (geradores) ---
   deals = (params?: Record<string, string | number | undefined>) =>
-    this.paginate("deals", { params });
+    this.paginate("deals", params);
+  projects = (params?: Record<string, string | number | undefined>) =>
+    this.paginate("projects", params);
   companies = (params?: Record<string, string | number | undefined>) =>
-    this.paginate("companies", { params });
+    this.paginate("companies", params);
   contacts = (params?: Record<string, string | number | undefined>) =>
-    this.paginate("contacts", { params });
+    this.paginate("contacts", params);
 }
