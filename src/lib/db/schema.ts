@@ -125,6 +125,8 @@ export const imobiliarias = pgTable(
     entryUtmTerm: text("entry_utm_term"),
     entryLandingPage: text("entry_landing_page"),
     entryConversionDate: timestamp("entry_conversion_date", { withTimezone: true }),
+    /** Rótulo da Origem Inbound ("Origem Lead") do deal de entrada. */
+    entryInboundLabel: text("entry_inbound_label"),
 
     /** Payload bruto do Moskit, para reprocessamento sem nova chamada. */
     raw: jsonb("raw"),
@@ -232,6 +234,7 @@ export const deals = pgTable(
     utmContent: text("utm_content"),
     utmTerm: text("utm_term"),
     inboundOriginRaw: text("inbound_origin_raw"),
+    inboundOriginLabel: text("inbound_origin_label"),
     cidade: text("cidade"),
     uf: text("uf"),
 

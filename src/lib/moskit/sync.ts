@@ -43,6 +43,42 @@ async function inBatches<T>(
   }
 }
 
+/** Mapa stageId → info (pagina TODAS as etapas; a lista trava em 10). */
+async function fetchStageMap(client: MoskitClient): Promise<Map<string, StageInfo>> {
+  const pipelines: Rec[] = [];
+  for await (const p of client.paginate("pipelines")) pipelines.push(p as Rec);
+  const pipeName = new Map(pipelines.map((p) => [String(p.id), String(p.name).trim()]));
+  const map = new Map<string, StageInfo>();
+  for await (const s of client.paginate("stages")) {
+    const st = s as Rec;
+    const pid = refId(st.pipeline) ?? "";
+    const pname = pipeName.get(pid) ?? "";
+    const name = String(st.name).trim();
+    map.set(String(st.id), {
+      name,
+      pipelineId: pid,
+      pipelineName: pname,
+      funnelStep: fieldMap.stageToFunnelStep[name] ?? null,
+      isProposta: pname === fieldMap.contractPipelineName,
+    });
+  }
+  return map;
+}
+
+/** Mapa optionId → rótulo da Origem Inbound ("Origem Lead"). */
+async function fetchInboundOptions(client: MoskitClient): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const opts = (await client.get(
+      `customFields/${fieldMap.dealFields.origemInbound}/options`,
+    )) as Rec[];
+    for (const o of opts ?? []) map.set(String(o.id), String(o.label ?? o.value ?? o.id));
+  } catch {
+    /* sem opções */
+  }
+  return map;
+}
+
 export async function runFullSync() {
   const db = getDb();
   const client = new MoskitClient();
@@ -73,23 +109,9 @@ export async function runFullSync() {
     const userMap = new Map(userRows.map((r) => [r.moskitId!, r.id]));
     log("Usuários:", users.length);
 
-    // 2) Stages/pipelines (mapa em memória) ----------------------------
-    const pipelines = (await client.pipelines()) as Rec[];
-    const pipeName = new Map(pipelines.map((p) => [String(p.id), String(p.name).trim()]));
-    const stages = (await client.stages()) as Rec[];
-    const stageMap = new Map<string, StageInfo>();
-    for (const s of stages) {
-      const pid = refId(s.pipeline) ?? "";
-      const pname = pipeName.get(pid) ?? "";
-      const name = String(s.name).trim();
-      stageMap.set(String(s.id), {
-        name,
-        pipelineId: pid,
-        pipelineName: pname,
-        funnelStep: fieldMap.stageToFunnelStep[name] ?? null,
-        isProposta: pname === fieldMap.contractPipelineName,
-      });
-    }
+    // 2) Stages/pipelines + opções de inbound (mapas em memória) -------
+    const stageMap = await fetchStageMap(client);
+    const inboundOptions = await fetchInboundOptions(client);
 
     // 3) Companies → imobiliárias --------------------------------------
     const companyMap = new Map<string, { name: string | null; avalystId: string | null }>();
@@ -215,6 +237,9 @@ export async function runFullSync() {
         utmContent: d.origin.utmContent,
         utmTerm: d.origin.utmTerm,
         inboundOriginRaw: d.origin.inboundOriginRaw,
+        inboundOriginLabel: d.origin.inboundOriginRaw
+          ? (inboundOptions.get(d.origin.inboundOriginRaw) ?? null)
+          : null,
         cidade: d.origin.cidade,
         uf: d.origin.uf,
       })),
@@ -244,7 +269,7 @@ export async function runFullSync() {
 }
 
 /** Deriva atribuição de entrada, funil, status, contratos e receita a partir de `deals`. */
-async function deriveAttribution() {
+export async function deriveAttribution() {
   const db = getDb();
   const stmts = [
     // entered_at = primeiro deal da imobiliária
@@ -269,6 +294,12 @@ async function deriveAttribution() {
         ON CONFLICT (name) DO NOTHING`,
     sql`UPDATE imobiliarias i SET entry_marketing_channel_id = mc.id
         FROM marketing_channels mc WHERE mc.name = i.entry_utm_source`,
+    // origem inbound de entrada (primeiro deal com Origem Lead)
+    sql`UPDATE imobiliarias i SET entry_inbound_label = d.lbl
+        FROM (SELECT DISTINCT ON (imobiliaria_id) imobiliaria_id, inbound_origin_label AS lbl
+              FROM deals WHERE imobiliaria_id IS NOT NULL AND inbound_origin_label IS NOT NULL
+              ORDER BY imobiliaria_id, deal_created_at ASC) d
+        WHERE i.id = d.imobiliaria_id`,
     // funnel_step = etapa mais avançada
     sql`UPDATE imobiliarias i SET funnel_step = d.step::funnel_step
         FROM (SELECT DISTINCT ON (imobiliaria_id) imobiliaria_id, funnel_step::text AS step
@@ -308,4 +339,35 @@ async function deriveAttribution() {
           AND imobiliaria_id IS NOT NULL`,
   ];
   for (const s of stmts) await db.execute(s);
+}
+
+/**
+ * Corrige dados JÁ sincronizados sem re-buscar os 25k deals:
+ * remapeia pipeline/etapa/funil/is_proposta (com as 15 etapas), resolve os
+ * rótulos da Origem Inbound e re-deriva a atribuição.
+ */
+export async function enrichExisting() {
+  const db = getDb();
+  const client = new MoskitClient();
+  const stageMap = await fetchStageMap(client);
+  const inbound = await fetchInboundOptions(client);
+  log("Etapas:", stageMap.size, "| opções inbound:", inbound.size);
+
+  for (const [stageId, info] of stageMap) {
+    await db.execute(sql`
+      UPDATE deals SET
+        pipeline_id = ${info.pipelineId},
+        pipeline_name = ${info.pipelineName},
+        stage_name = ${info.name},
+        funnel_step = ${info.funnelStep ? sql`${info.funnelStep}::funnel_step` : sql`NULL`},
+        is_proposta = ${info.isProposta}
+      WHERE stage_id = ${stageId}`);
+  }
+  for (const [optId, label] of inbound) {
+    await db.execute(
+      sql`UPDATE deals SET inbound_origin_label = ${label} WHERE inbound_origin_raw = ${optId}`,
+    );
+  }
+  await deriveAttribution();
+  log("Enriquecimento concluído.");
 }

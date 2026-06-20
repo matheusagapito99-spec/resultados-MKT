@@ -13,7 +13,8 @@
     "db:studio": "drizzle-kit studio",
     "db:stats": "tsx scripts/db-stats.ts",
     "moskit:introspect": "tsx scripts/moskit-introspect.ts",
-    "moskit:sync": "tsx scripts/moskit-sync.ts"
+    "moskit:sync": "tsx scripts/moskit-sync.ts",
+    "moskit:enrich": "tsx scripts/moskit-enrich.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
