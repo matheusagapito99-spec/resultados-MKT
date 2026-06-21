@@ -35,18 +35,29 @@ export async function getDeals(
   const offset = (page - 1) * PAGE_SIZE;
 
   // universo = inbound + marketing somente (via imobiliária `im`)
-  const conds: string[] = [
-    "((im.entry_inbound_label is not null and im.entry_inbound_label not ilike '%outbound%') or im.entry_utm_source is not null)",
-  ];
+  const conds: string[] = [];
   const params: unknown[] = [];
   const add = (cond: (i: number) => string, value: unknown) => {
     params.push(value);
     conds.push(cond(params.length));
   };
+  // origem (via imobiliária im): Todos = Inbound + Marketing
+  if (f.origin === "inbound") {
+    conds.push("im.entry_inbound_label = 'Inbound'");
+  } else if (f.origin === "marketing") {
+    conds.push("im.entry_utm_source is not null");
+    if (f.channels.length) {
+      const ph = f.channels.map((c) => {
+        params.push(c);
+        return `$${params.length}`;
+      });
+      conds.push(`im.entry_utm_source in (${ph.join(", ")})`);
+    }
+  } else {
+    conds.push("(im.entry_inbound_label = 'Inbound' or im.entry_utm_source is not null)");
+  }
   if (f.from) add((i) => `d.deal_created_at >= $${i}`, f.from);
   if (f.to) add((i) => `d.deal_created_at < ($${i}::date + 1)`, f.to);
-  if (f.source)
-    add((i) => `(im.entry_inbound_label = $${i} or im.entry_utm_source = $${i})`, f.source);
   if (f.pipeline) add((i) => `d.pipeline_name = $${i}`, f.pipeline);
   if (f.stage) add((i) => `d.stage_name = $${i}`, f.stage);
   if (opts.status) add((i) => `d.status = $${i}`, opts.status);

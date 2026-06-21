@@ -5,9 +5,9 @@ export interface TrendBucket {
   label: string;
   isRef: boolean;
   novosLeads: number;
-  reunioes: number;
+  reunioes: number; // = ganhos (status WON) na Prospecção = reunião realizada
   ganhos: number;
-  taxaGanho: number; // %
+  taxaGanho: number; // reuniões / novos leads (%)
   cicloMedioDias: number;
 }
 
@@ -17,38 +17,47 @@ export interface InboundTrend {
   buckets: TrendBucket[];
   ref: TrendBucket;
   prev: TrendBucket | null;
-  deltaNovos: number | null; // % vs período anterior
-  deltaTaxa: number | null; // pontos percentuais
-  deltaCiclo: number | null; // dias (variação)
+  deltaNovos: number | null;
+  deltaTaxa: number | null;
+  deltaCiclo: number | null;
 }
 
-const UNIVERSE =
-  "((i.entry_inbound_label is not null and i.entry_inbound_label not ilike '%outbound%') or i.entry_utm_source is not null)";
+const PIPE = "Prospecção de Imobiliárias";
 
 /**
- * Série de tendência dos leads inbound (Kanban Prospecção), por data de criação do lead.
- * Granularidade e janela (6 períodos, referência à direita) vêm de `timeAxis(f)`.
+ * Tendência do Kanban "Prospecção de Imobiliárias" — DEALS por data de criação.
+ * Validado contra o Moskit: Novos Leads = deals (Origem Lead=Inbound / UTM);
+ * Reuniões realizadas = status WON; Taxa de ganho = WON/novos; Ciclo = close−created (WON).
  */
 export async function getInboundTrend(f: Filters): Promise<InboundTrend> {
   const ax = timeAxis(f);
   const start = ax.buckets[0].start;
   const endEx = ax.buckets[ax.buckets.length - 1].endExclusive;
 
-  const conds = [UNIVERSE, `i.entered_at >= $2`, `i.entered_at < $3`];
-  const params: unknown[] = [ax.unit, start, endEx];
-  if (f.source) {
-    params.push(f.source);
-    conds.push(`(i.entry_inbound_label = $4 or i.entry_utm_source = $4)`);
+  const conds = [`pipeline_name = $4`, `deal_created_at >= $2`, `deal_created_at < $3`];
+  const params: unknown[] = [ax.unit, start, endEx, PIPE];
+  if (f.origin === "inbound") {
+    conds.push(`inbound_origin_label = 'Inbound'`);
+  } else if (f.origin === "marketing") {
+    conds.push(`utm_source is not null`);
+    if (f.channels.length) {
+      const ph = f.channels.map((c) => {
+        params.push(c);
+        return `$${params.length}`;
+      });
+      conds.push(`utm_source in (${ph.join(", ")})`);
+    }
+  } else {
+    conds.push(`(inbound_origin_label = 'Inbound' or utm_source is not null)`);
   }
 
   const data = await q(
-    `select to_char(date_trunc($1, i.entered_at),'YYYY-MM-DD') as bstart,
+    `select to_char(date_trunc($1, deal_created_at),'YYYY-MM-DD') as bstart,
        count(*)::int novos,
-       count(*) filter (where i.funnel_step in ('reuniao','cadastro','ativa'))::int reunioes,
-       count(*) filter (where i.status='ativa')::int ganhos,
-       avg(extract(epoch from (i.first_sale_at - i.entered_at))/86400)
-         filter (where i.status='ativa' and i.first_sale_at is not null and i.first_sale_at >= i.entered_at) ciclo
-     from imobiliarias i
+       count(*) filter (where status='WON')::int won,
+       avg(extract(epoch from (close_date - deal_created_at))/86400)
+         filter (where status='WON' and close_date is not null and close_date >= deal_created_at) ciclo
+     from deals
      where ${conds.join(" and ")}
      group by 1`,
     params,
@@ -58,14 +67,14 @@ export async function getInboundTrend(f: Filters): Promise<InboundTrend> {
   const buckets: TrendBucket[] = ax.buckets.map((b) => {
     const r = byStart.get(b.start);
     const novos = num(r?.novos);
-    const ganhos = num(r?.ganhos);
+    const won = num(r?.won);
     return {
       label: b.label,
       isRef: b.isRef,
       novosLeads: novos,
-      reunioes: num(r?.reunioes),
-      ganhos,
-      taxaGanho: novos ? (ganhos / novos) * 100 : 0,
+      reunioes: won,
+      ganhos: won,
+      taxaGanho: novos ? (won / novos) * 100 : 0,
       cicloMedioDias: Math.round(num(r?.ciclo)),
     };
   });
