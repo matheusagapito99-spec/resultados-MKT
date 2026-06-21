@@ -26,7 +26,7 @@ export async function getSellers(f: Filters): Promise<SellerRow[]> {
          coalesce(sum(d.value_cents) filter (where d.is_proposta and d.status='WON'),0) valor_cents,
          count(*) filter (where d.is_proposta and d.status='OPEN')::int abertas,
          count(*) filter (where d.is_proposta and d.status='LOST')::int perdidas
-       from users u join deals d on d.owner_id = u.id${d.where}
+       from users u join deals d on d.owner_id = u.id${d.join}${d.where}
        group by u.name, u.role having count(d.id) > 0
        order by valor_cents desc`,
       d.params,

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { PanelLeftClose, PanelLeft, CheckCircle2 } from "lucide-react";
 import { navItems, secondaryNavItems, type NavItem } from "@/config/nav";
@@ -17,15 +17,17 @@ function NavLink({
   item,
   active,
   collapsed,
+  qs,
 }: {
   item: NavItem;
   active: boolean;
   collapsed: boolean;
+  qs: string;
 }) {
   const Icon = item.icon;
   return (
     <Link
-      href={item.href}
+      href={`${item.href}${qs}`}
       title={collapsed ? item.label : undefined}
       className={cn(
         "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
@@ -46,6 +48,8 @@ function NavLink({
 
 export function Sidebar() {
   const pathname = usePathname();
+  const search = useSearchParams().toString();
+  const qs = search ? `?${search}` : "";
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -75,6 +79,7 @@ export function Sidebar() {
             key={item.href}
             item={item}
             collapsed={collapsed}
+            qs={qs}
             active={isActive(pathname, item.href)}
           />
         ))}
@@ -85,6 +90,7 @@ export function Sidebar() {
               key={item.href}
               item={item}
               collapsed={collapsed}
+              qs={qs}
               active={isActive(pathname, item.href)}
             />
           ))}

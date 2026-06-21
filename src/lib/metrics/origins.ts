@@ -45,7 +45,7 @@ export async function getOrigins(f: Filters): Promise<OriginsData> {
   const inbound = (await byColumn("entry_inbound_label", i)).map(map);
   const marketing = (await byColumn("entry_utm_source", i)).map(map);
   const [utm] = await q(
-    `select count(*)::int n from deals d where d.utm_source is not null${d.and}`,
+    `select count(*)::int n from deals d${d.join} where d.utm_source is not null${d.and}`,
     d.params,
   );
 

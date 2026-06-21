@@ -11,7 +11,9 @@ export default async function DashboardLayout({
   const options = await getFilterOptions();
   return (
     <div className="flex min-h-svh">
-      <Sidebar />
+      <Suspense fallback={<aside className="hidden w-[244px] shrink-0 border-r border-border md:block" />}>
+        <Sidebar />
+      </Suspense>
       <div className="flex min-w-0 flex-1 flex-col">
         <Suspense fallback={<div className="h-14 border-b border-border" />}>
           <Topbar options={options} />

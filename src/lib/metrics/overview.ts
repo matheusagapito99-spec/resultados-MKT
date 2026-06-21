@@ -28,9 +28,9 @@ export async function getOverview(f: Filters): Promise<OverviewData> {
   const i = imobFilter(f);
 
   const [kpi] = await q(
-    `select coalesce(sum(value_cents) filter (where status='WON'),0) receita_cents,
-       count(*) filter (where status='WON') contratos_ganhos
-     from deals d where d.is_proposta${d.and}`,
+    `select coalesce(sum(d.value_cents) filter (where d.status='WON'),0) receita_cents,
+       count(*) filter (where d.status='WON') contratos_ganhos
+     from deals d${d.join} where d.is_proposta${d.and}`,
     d.params,
   );
   const [ativas] = await q(
@@ -38,7 +38,7 @@ export async function getOverview(f: Filters): Promise<OverviewData> {
     i.params,
   );
   const [tImob] = await q(`select count(*) n from imobiliarias i${i.where}`, i.params);
-  const [tDeals] = await q(`select count(*) n from deals d${d.where}`, d.params);
+  const [tDeals] = await q(`select count(*) n from deals d${d.join}${d.where}`, d.params);
 
   const funnelMap = new Map(
     (
@@ -62,7 +62,7 @@ export async function getOverview(f: Filters): Promise<OverviewData> {
   const sellers = (
     await q(
       `select u.name, count(*)::int contratos, coalesce(sum(d.value_cents),0) valor_cents
-       from deals d join users u on u.id=d.owner_id
+       from deals d${d.join} join users u on u.id=d.owner_id
        where d.is_proposta and d.status='WON' and d.value_cents is not null${d.and}
        group by u.name order by valor_cents desc limit 6`,
       d.params,
@@ -73,7 +73,7 @@ export async function getOverview(f: Filters): Promise<OverviewData> {
     await q(
       `select to_char(date_trunc('month', coalesce(d.close_date, d.deal_created_at)),'YYYY-MM') as ym,
         coalesce(sum(d.value_cents),0) as total_cents
-       from deals d
+       from deals d${d.join}
        where d.is_proposta and d.status='WON' and d.value_cents is not null${d.and}
        group by 1 order by 1`,
       d.params,

@@ -30,7 +30,7 @@ export async function getFunnel(f: Filters): Promise<FunnelData> {
 
   const stages = (
     await q(
-      `select pipeline_name, stage_name, count(*)::int n from deals d
+      `select pipeline_name, stage_name, count(*)::int n from deals d${d.join}
        where d.stage_name is not null${d.and}
        group by pipeline_name, stage_name order by pipeline_name, n desc`,
       d.params,

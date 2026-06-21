@@ -34,7 +34,7 @@ export async function getVelocity(f: Filters): Promise<VelocityData> {
        avg(extract(epoch from (now() - deal_created_at))/86400) idade_media,
        count(*) filter (where deal_created_at < now() - interval '30 days')::int paradas30,
        count(*) filter (where deal_created_at < now() - interval '60 days')::int paradas60
-     from deals d where d.is_proposta and d.status='OPEN' and d.deal_created_at is not null${d.and}`,
+     from deals d${d.join} where d.is_proposta and d.status='OPEN' and d.deal_created_at is not null${d.and}`,
     d.params,
   );
 

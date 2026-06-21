@@ -34,7 +34,10 @@ export async function getDeals(
   const page = Math.max(1, opts.page ?? 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  const conds: string[] = [];
+  // universo = inbound + marketing somente (via imobiliária `im`)
+  const conds: string[] = [
+    "((im.entry_inbound_label is not null and im.entry_inbound_label not ilike '%outbound%') or im.entry_utm_source is not null)",
+  ];
   const params: unknown[] = [];
   const add = (cond: (i: number) => string, value: unknown) => {
     params.push(value);
@@ -42,7 +45,8 @@ export async function getDeals(
   };
   if (f.from) add((i) => `d.deal_created_at >= $${i}`, f.from);
   if (f.to) add((i) => `d.deal_created_at < ($${i}::date + 1)`, f.to);
-  if (f.source) add((i) => `d.utm_source = $${i}`, f.source);
+  if (f.source)
+    add((i) => `(im.entry_inbound_label = $${i} or im.entry_utm_source = $${i})`, f.source);
   if (f.pipeline) add((i) => `d.pipeline_name = $${i}`, f.pipeline);
   if (f.stage) add((i) => `d.stage_name = $${i}`, f.stage);
   if (opts.status) add((i) => `d.status = $${i}`, opts.status);
@@ -51,7 +55,7 @@ export async function getDeals(
     const idx = params.length;
     conds.push(`(d.name ilike $${idx} or im.name ilike $${idx})`);
   }
-  const whereSql = conds.length ? `where ${conds.join(" and ")}` : "";
+  const whereSql = `where ${conds.join(" and ")}`;
 
   const list = (await sql.query(
     `select d.moskit_id, d.name ticket, d.status, d.pipeline_name, d.stage_name,
