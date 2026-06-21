@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Card, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/patterns/page-header";
 import { getDeals } from "@/lib/metrics/deals";
+import { parseFilters } from "@/lib/filters";
 import { formatBRL, formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -11,12 +12,6 @@ const STATUS = [
   { v: "OPEN", label: "Em aberto" },
   { v: "WON", label: "Ganhos" },
   { v: "LOST", label: "Perdidos" },
-];
-const PIPELINES = [
-  { v: "", label: "Todas as pipelines" },
-  { v: "Prospecção de Imobiliárias", label: "Prospecção" },
-  { v: "Cadastros - OPPs", label: "Cadastros" },
-  { v: "Gestão de Propostas", label: "Gestão de Propostas" },
 ];
 
 const STATUS_STYLE: Record<string, string> = {
@@ -35,73 +30,81 @@ export default async function LeadsPage({
   searchParams: Promise<{ [k: string]: string | string[] | undefined }>;
 }) {
   const sp = await searchParams;
+  const f = parseFilters(sp);
   const q = param(sp.q);
   const status = param(sp.status);
-  const pipeline = param(sp.pipeline);
   const page = Math.max(1, parseInt(param(sp.page) || "1", 10) || 1);
 
-  const data = await getDeals({ q, status, pipeline, page });
+  const data = await getDeals(f, { q, status, page });
 
+  // querystring preservando TODOS os filtros (globais + locais)
   const qs = (p: number) => {
     const u = new URLSearchParams();
-    if (q) u.set("q", q);
-    if (status) u.set("status", status);
-    if (pipeline) u.set("pipeline", pipeline);
+    const all: Record<string, string> = {
+      period: f.period !== "all" ? f.period : "",
+      from: f.from ?? "",
+      to: f.to ?? "",
+      source: f.source,
+      pipeline: f.pipeline,
+      stage: f.stage,
+      status,
+      q,
+    };
+    for (const [k, v] of Object.entries(all)) if (v) u.set(k, v);
     u.set("page", String(p));
     return `?${u.toString()}`;
+  };
+
+  // valores p/ hidden inputs que preservam os filtros globais no submit do form
+  const globals: Record<string, string> = {
+    period: f.period !== "all" ? f.period : "",
+    from: f.from ?? "",
+    to: f.to ?? "",
+    source: f.source,
+    pipeline: f.pipeline,
+    stage: f.stage,
   };
 
   return (
     <div className="flex animate-fade-in flex-col gap-6">
       <PageHeader
         title="Leads & Negócios"
-        description="Explorador de negócios do Moskit com filtros"
+        description="Explorador de negócios do Moskit — use a barra de filtros acima + busca e status aqui"
       />
 
       <Card>
-        <div className="flex flex-wrap items-end gap-3 p-5">
-          <form className="flex flex-wrap items-end gap-3" method="get">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-muted">Buscar</label>
-              <input
-                name="q"
-                defaultValue={q}
-                placeholder="Ticket ou imobiliária…"
-                className="h-9 w-56 rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-brand"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-muted">Status</label>
-              <select
-                name="status"
-                defaultValue={status}
-                className="h-9 rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-brand"
-              >
-                {STATUS.map((s) => (
-                  <option key={s.v} value={s.v}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-muted">Pipeline</label>
-              <select
-                name="pipeline"
-                defaultValue={pipeline}
-                className="h-9 rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-brand"
-              >
-                {PIPELINES.map((p) => (
-                  <option key={p.v} value={p.v}>{p.label}</option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="submit"
-              className="h-9 rounded-lg bg-brand px-4 text-sm font-medium text-brand-fg transition-colors hover:bg-brand-strong"
+        <form className="flex flex-wrap items-end gap-3 p-5" method="get">
+          {Object.entries(globals).map(([k, v]) =>
+            v ? <input key={k} type="hidden" name={k} value={v} /> : null,
+          )}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted">Buscar</label>
+            <input
+              name="q"
+              defaultValue={q}
+              placeholder="Ticket ou imobiliária…"
+              className="h-9 w-56 rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted">Status</label>
+            <select
+              name="status"
+              defaultValue={status}
+              className="h-9 rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
-              Filtrar
-            </button>
-          </form>
-        </div>
+              {STATUS.map((s) => (
+                <option key={s.v} value={s.v}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="submit"
+            className="h-9 rounded-lg bg-brand px-4 text-sm font-medium text-brand-fg transition-colors hover:bg-brand-strong"
+          >
+            Filtrar
+          </button>
+        </form>
 
         <CardHeader
           title={`${formatNumber(data.total)} negócios`}

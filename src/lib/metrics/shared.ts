@@ -7,3 +7,8 @@ export const rows = (r: unknown): Row[] => r as Row[];
 
 /** Cliente SQL cru (neon) para as métricas. */
 export const db = () => getSql();
+
+/** Consulta parametrizada (para WHERE dinâmico dos filtros). */
+export async function q(text: string, params: unknown[] = []): Promise<Row[]> {
+  return (await getSql().query(text, params)) as Row[];
+}

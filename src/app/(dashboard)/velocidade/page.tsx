@@ -3,12 +3,17 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { StatCard } from "@/components/patterns/stat-card";
 import { BarList } from "@/components/patterns/bar-list";
 import { getVelocity } from "@/lib/metrics/velocity";
+import { parseFilters } from "@/lib/filters";
 import { formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function VelocidadePage() {
-  const d = await getVelocity();
+export default async function VelocidadePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [k: string]: string | string[] | undefined }>;
+}) {
+  const d = await getVelocity(parseFilters(await searchParams));
 
   return (
     <div className="flex animate-fade-in flex-col gap-6">

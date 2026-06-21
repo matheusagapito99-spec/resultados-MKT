@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import type { Filters } from "@/lib/filters";
 
 export interface DealRow {
   moskitId: string;
@@ -22,35 +23,35 @@ export interface DealsPage {
   pages: number;
 }
 
-export interface DealFilters {
-  page?: number;
-  status?: string;
-  pipeline?: string;
-  q?: string;
-}
-
 const PAGE_SIZE = 25;
 
-export async function getDeals(opts: DealFilters): Promise<DealsPage> {
+/** Explorador de negócios: filtros globais (período/canal/pipeline/etapa) + status + busca. */
+export async function getDeals(
+  f: Filters,
+  opts: { status?: string; q?: string; page?: number },
+): Promise<DealsPage> {
   const sql = getSql();
   const page = Math.max(1, opts.page ?? 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  const where: string[] = [];
+  const conds: string[] = [];
   const params: unknown[] = [];
-  if (opts.status) {
-    params.push(opts.status);
-    where.push(`d.status = $${params.length}`);
-  }
-  if (opts.pipeline) {
-    params.push(opts.pipeline);
-    where.push(`d.pipeline_name = $${params.length}`);
-  }
+  const add = (cond: (i: number) => string, value: unknown) => {
+    params.push(value);
+    conds.push(cond(params.length));
+  };
+  if (f.from) add((i) => `d.deal_created_at >= $${i}`, f.from);
+  if (f.to) add((i) => `d.deal_created_at < ($${i}::date + 1)`, f.to);
+  if (f.source) add((i) => `d.utm_source = $${i}`, f.source);
+  if (f.pipeline) add((i) => `d.pipeline_name = $${i}`, f.pipeline);
+  if (f.stage) add((i) => `d.stage_name = $${i}`, f.stage);
+  if (opts.status) add((i) => `d.status = $${i}`, opts.status);
   if (opts.q) {
     params.push(`%${opts.q}%`);
-    where.push(`(d.name ilike $${params.length} or im.name ilike $${params.length})`);
+    const idx = params.length;
+    conds.push(`(d.name ilike $${idx} or im.name ilike $${idx})`);
   }
-  const whereSql = where.length ? `where ${where.join(" and ")}` : "";
+  const whereSql = conds.length ? `where ${conds.join(" and ")}` : "";
 
   const list = (await sql.query(
     `select d.moskit_id, d.name ticket, d.status, d.pipeline_name, d.stage_name,

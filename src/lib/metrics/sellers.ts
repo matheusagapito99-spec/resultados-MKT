@@ -1,4 +1,5 @@
-import { db, rows, num, str } from "./shared";
+import { q, num, str } from "./shared";
+import { dealFilter, type Filters } from "@/lib/filters";
 
 export interface SellerRow {
   name: string;
@@ -16,19 +17,20 @@ const ROLE_LABEL: Record<string, string> = {
   outro: "Outro",
 };
 
-export async function getSellers(): Promise<SellerRow[]> {
-  const sql = db();
-  return rows(
-    await sql`
-      select u.name, u.role,
-        count(*) filter (where d.is_proposta and d.status='WON')::int ganhos,
-        coalesce(sum(d.value_cents) filter (where d.is_proposta and d.status='WON'),0) valor_cents,
-        count(*) filter (where d.is_proposta and d.status='OPEN')::int abertas,
-        count(*) filter (where d.is_proposta and d.status='LOST')::int perdidas
-      from users u join deals d on d.owner_id = u.id
-      group by u.name, u.role
-      having count(d.id) > 0
-      order by valor_cents desc`,
+export async function getSellers(f: Filters): Promise<SellerRow[]> {
+  const d = dealFilter(f);
+  return (
+    await q(
+      `select u.name, u.role,
+         count(*) filter (where d.is_proposta and d.status='WON')::int ganhos,
+         coalesce(sum(d.value_cents) filter (where d.is_proposta and d.status='WON'),0) valor_cents,
+         count(*) filter (where d.is_proposta and d.status='OPEN')::int abertas,
+         count(*) filter (where d.is_proposta and d.status='LOST')::int perdidas
+       from users u join deals d on d.owner_id = u.id${d.where}
+       group by u.name, u.role having count(d.id) > 0
+       order by valor_cents desc`,
+      d.params,
+    )
   ).map((r) => {
     const ganhos = num(r.ganhos);
     const perdidas = num(r.perdidas);

@@ -1,6 +1,7 @@
 import { Card, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/patterns/page-header";
 import { getOrigins, type OriginRow } from "@/lib/metrics/origins";
+import { parseFilters } from "@/lib/filters";
 import { formatBRL, formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -38,8 +39,12 @@ function OriginTable({ rows }: { rows: OriginRow[] }) {
   );
 }
 
-export default async function OrigensPage() {
-  const d = await getOrigins();
+export default async function OrigensPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [k: string]: string | string[] | undefined }>;
+}) {
+  const d = await getOrigins(parseFilters(await searchParams));
 
   return (
     <div className="flex animate-fade-in flex-col gap-6">

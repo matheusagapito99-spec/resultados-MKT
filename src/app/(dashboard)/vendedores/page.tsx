@@ -1,12 +1,17 @@
 import { Card, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/patterns/page-header";
 import { getSellers } from "@/lib/metrics/sellers";
+import { parseFilters } from "@/lib/filters";
 import { formatBRL, formatNumber, formatPercent } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function VendedoresPage() {
-  const sellers = await getSellers();
+export default async function VendedoresPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [k: string]: string | string[] | undefined }>;
+}) {
+  const sellers = await getSellers(parseFilters(await searchParams));
 
   return (
     <div className="flex animate-fade-in flex-col gap-6">

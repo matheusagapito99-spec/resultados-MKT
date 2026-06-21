@@ -3,6 +3,7 @@ import { StatCard } from "@/components/patterns/stat-card";
 import { FunnelChart } from "@/components/charts/funnel-chart";
 import { TrendArea } from "@/components/charts/trend-area";
 import { getOverview } from "@/lib/metrics/overview";
+import { parseFilters } from "@/lib/filters";
 import { formatBRL, formatNumber } from "@/lib/utils";
 import type { FunnelStage } from "@/lib/mock-data";
 
@@ -32,8 +33,12 @@ function buildFunnel(steps: { label: string; count: number }[]): FunnelStage[] {
   }));
 }
 
-export default async function OverviewPage() {
-  const d = await getOverview();
+export default async function OverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [k: string]: string | string[] | undefined }>;
+}) {
+  const d = await getOverview(parseFilters(await searchParams));
   const funnel = buildFunnel(d.funnel);
   const maxInbound = Math.max(1, ...d.inbound.map((i) => i.count));
   const syncWhen = d.lastSync?.finishedAt

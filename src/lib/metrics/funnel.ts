@@ -1,4 +1,5 @@
-import { db, rows, num, str } from "./shared";
+import { q, num, str } from "./shared";
+import { dealFilter, imobFilter, type Filters } from "@/lib/filters";
 
 const FUNNEL_ORDER: { step: string; label: string }[] = [
   { step: "lead", label: "Lead" },
@@ -13,25 +14,31 @@ export interface FunnelData {
   stages: { pipeline: string; stage: string; count: number }[];
 }
 
-export async function getFunnel(): Promise<FunnelData> {
-  const sql = db();
+export async function getFunnel(f: Filters): Promise<FunnelData> {
+  const d = dealFilter(f);
+  const i = imobFilter(f);
+
   const stepMap = new Map(
-    rows(
-      await sql`select funnel_step, count(*)::int n from imobiliarias
-        where funnel_step is not null group by funnel_step`,
+    (
+      await q(
+        `select funnel_step, count(*)::int n from imobiliarias i
+         where i.funnel_step is not null${i.and} group by funnel_step`,
+        i.params,
+      )
     ).map((r) => [str(r.funnel_step), num(r.n)]),
   );
-  const stages = rows(
-    await sql`select pipeline_name, stage_name, count(*)::int n from deals
-      where stage_name is not null group by pipeline_name, stage_name
-      order by pipeline_name, n desc`,
-  ).map((r) => ({
-    pipeline: str(r.pipeline_name),
-    stage: str(r.stage_name),
-    count: num(r.n),
-  }));
+
+  const stages = (
+    await q(
+      `select pipeline_name, stage_name, count(*)::int n from deals d
+       where d.stage_name is not null${d.and}
+       group by pipeline_name, stage_name order by pipeline_name, n desc`,
+      d.params,
+    )
+  ).map((r) => ({ pipeline: str(r.pipeline_name), stage: str(r.stage_name), count: num(r.n) }));
+
   return {
-    steps: FUNNEL_ORDER.map((f) => ({ ...f, count: stepMap.get(f.step) ?? 0 })),
+    steps: FUNNEL_ORDER.map((x) => ({ ...x, count: stepMap.get(x.step) ?? 0 })),
     stages,
   };
 }

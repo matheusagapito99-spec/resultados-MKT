@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { FunnelChart } from "@/components/charts/funnel-chart";
 import { getFunnel } from "@/lib/metrics/funnel";
 import { toCumulativeFunnel } from "@/lib/funnel";
+import { parseFilters } from "@/lib/filters";
 import { formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +14,12 @@ const PIPELINE_ORDER = [
   "Gestão de Propostas",
 ];
 
-export default async function FunilPage() {
-  const d = await getFunnel();
+export default async function FunilPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [k: string]: string | string[] | undefined }>;
+}) {
+  const d = await getFunnel(parseFilters(await searchParams));
   const funnel = toCumulativeFunnel(d.steps);
 
   const byPipeline = PIPELINE_ORDER.map((p) => ({
