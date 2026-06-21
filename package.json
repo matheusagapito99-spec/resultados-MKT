@@ -15,7 +15,8 @@
     "moskit:introspect": "tsx scripts/moskit-introspect.ts",
     "moskit:sync": "tsx scripts/moskit-sync.ts",
     "moskit:enrich": "tsx scripts/moskit-enrich.ts",
-    "validate": "tsx scripts/validate.ts"
+    "validate": "tsx scripts/validate.ts",
+    "import:hist": "tsx scripts/import-hist.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -37,6 +38,7 @@
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "xlsx": "^0.18.5"
   }
 }

@@ -358,6 +358,64 @@ export const marketingCosts = pgTable(
 
 /* --------------------- Infra de sincronização -------------------- */
 
+/* --------- Bases históricas 2025 (RD Station) — fonte de verdade p/ comparação --------- */
+
+export const histReunioes = pgTable(
+  "hist_reunioes",
+  {
+    id: serial("id").primaryKey(),
+    nome: text("nome"),
+    imobiliaria: text("imobiliaria"),
+    origem: text("origem"),
+    realizou: text("realizou"), // Sim | Não | Aguardando
+    responsavel: text("responsavel"),
+    amResponsavel: text("am_responsavel"),
+    dataAgendamento: date("data_agendamento"),
+    dataReuniao: date("data_reuniao"),
+    link: text("link"),
+    fonte: text("fonte"), // 'controle' | 'fenix'
+  },
+  (t) => [
+    index("hr_data_idx").on(t.dataReuniao),
+    index("hr_realizou_idx").on(t.realizou),
+    index("hr_origem_idx").on(t.origem),
+  ],
+);
+
+export const histCadastros = pgTable(
+  "hist_cadastros",
+  {
+    id: serial("id").primaryKey(),
+    nome: text("nome"),
+    imobiliaria: text("imobiliaria"),
+    origem: text("origem"),
+    bdr: text("bdr"),
+    amResponsavel: text("am_responsavel"),
+    dataReuniao: date("data_reuniao"),
+    cadastrou: text("cadastrou"),
+    dataCadastro: date("data_cadastro"),
+    link: text("link"),
+  },
+  (t) => [index("hc_data_idx").on(t.dataCadastro), index("hc_origem_idx").on(t.origem)],
+);
+
+export const histFaturamento = pgTable(
+  "hist_faturamento",
+  {
+    id: serial("id").primaryKey(),
+    nProposta: text("n_proposta"),
+    imobiliaria: text("imobiliaria"),
+    valorCents: bigint("valor_cents", { mode: "number" }),
+    status: text("status"),
+    dataEnvio: date("data_envio"),
+    dataAtualizacao: date("data_atualizacao"),
+    origemImob: text("origem_imob"),
+    regional: text("regional"),
+    url: text("url"),
+  },
+  (t) => [index("hf_envio_idx").on(t.dataEnvio), index("hf_status_idx").on(t.status)],
+);
+
 export const syncRuns = pgTable("sync_runs", {
   id: serial("id").primaryKey(),
   kind: text("kind").notNull(), // incremental | full | webhook
