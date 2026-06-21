@@ -77,28 +77,98 @@ export function periodLabel(f: Filters): string {
   return PERIOD_LABEL.get(f.period) ?? "Todo o período";
 }
 
-/** Mês de referência (YYYY-MM) derivado do período: fim do período, ou mês atual. */
-export function referenceMonth(f: Filters): { year: number; month: number } {
-  const base = f.to ? new Date(`${f.to}T00:00:00`) : new Date();
-  return { year: base.getFullYear(), month: base.getMonth() + 1 };
+/* ----------------- Eixo temporal dinâmico (gráfico de tendência) ----------------- */
+
+export type Granularity = "day" | "week" | "month" | "quarter";
+export interface Bucket {
+  start: string; // YYYY-MM-DD
+  endExclusive: string;
+  label: string;
+  isRef: boolean;
+}
+export interface TimeAxis {
+  granularity: Granularity;
+  unit: string; // p/ date_trunc
+  buckets: Bucket[];
+  rangeLabel: string;
 }
 
-/** Lista de meses (YYYY-MM) de janeiro até o mês de referência; se ref=jan, 3 meses antes. */
-export function monthsUntilReference(f: Filters): { ym: string; label: string }[] {
-  const { year, month } = referenceMonth(f);
-  const MES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-  const out: { ym: string; label: string }[] = [];
-  const push = (y: number, m: number) =>
-    out.push({ ym: `${y}-${String(m).padStart(2, "0")}`, label: `${MES[m - 1]}/${String(y).slice(2)}` });
-  if (month === 1) {
-    // 3 meses antes (nov, dez do ano anterior + jan)
-    push(year - 1, 11);
-    push(year - 1, 12);
-    push(year, 1);
-  } else {
-    for (let m = 1; m <= month; m++) push(year, m);
+const DAY = 86400000;
+const MES3 = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const GRAN_LABEL: Record<Granularity, string> = {
+  day: "diária",
+  week: "semanal",
+  month: "mensal",
+  quarter: "trimestral",
+};
+const pad = (n: number) => String(n).padStart(2, "0");
+const fmtISO = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+const startOfDay = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+const startOfWeek = (d: Date) => {
+  const s = startOfDay(d);
+  return new Date(s.getTime() - ((s.getUTCDay() + 6) % 7) * DAY); // segunda-feira
+};
+const startOfMonth = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+const startOfQuarter = (d: Date) =>
+  new Date(Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1));
+const addDays = (d: Date, n: number) => new Date(d.getTime() + n * DAY);
+const addMonths = (d: Date, n: number) =>
+  new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1));
+
+/** Granularidade automática a partir do período do filtro. */
+function granularityFor(f: Filters): Granularity {
+  if (f.period === "custom" && f.from && f.to) {
+    const days = Math.round((Date.parse(f.to) - Date.parse(f.from)) / DAY) + 1;
+    return days <= 2 ? "day" : days <= 10 ? "week" : days <= 75 ? "month" : "quarter";
   }
-  return out;
+  const m: Record<string, Granularity> = {
+    "7d": "week",
+    "28d": "month",
+    "3m": "quarter",
+    "6m": "quarter",
+    "12m": "quarter",
+    all: "month",
+  };
+  return m[f.period] ?? "month";
+}
+
+/** Eixo de 6 períodos (referência = fim do filtro, à direita) + 5 anteriores equivalentes. */
+export function timeAxis(f: Filters): TimeAxis {
+  const g = granularityFor(f);
+  const end = f.to ? new Date(`${f.to}T00:00:00Z`) : new Date();
+  const N = 6;
+  const refStart =
+    g === "day" ? startOfDay(end) : g === "week" ? startOfWeek(end) : g === "month" ? startOfMonth(end) : startOfQuarter(end);
+
+  const stepStart = (i: number) =>
+    g === "day" ? addDays(refStart, -i)
+    : g === "week" ? addDays(refStart, -i * 7)
+    : g === "month" ? addMonths(refStart, -i)
+    : addMonths(refStart, -i * 3);
+  const stepNext = (s: Date) =>
+    g === "day" ? addDays(s, 1) : g === "week" ? addDays(s, 7) : g === "month" ? addMonths(s, 1) : addMonths(s, 3);
+  const label = (s: Date) => {
+    if (g === "day" || g === "week") return `${pad(s.getUTCDate())}/${pad(s.getUTCMonth() + 1)}`;
+    if (g === "month") return `${MES3[s.getUTCMonth()]}/${String(s.getUTCFullYear()).slice(2)}`;
+    return `Q${Math.floor(s.getUTCMonth() / 3) + 1}/${String(s.getUTCFullYear()).slice(2)}`;
+  };
+
+  const buckets: Bucket[] = [];
+  for (let i = N - 1; i >= 0; i--) {
+    const start = stepStart(i);
+    buckets.push({
+      start: fmtISO(start),
+      endExclusive: fmtISO(stepNext(start)),
+      label: label(start),
+      isRef: i === 0,
+    });
+  }
+  return {
+    granularity: g,
+    unit: g,
+    buckets,
+    rangeLabel: `${buckets[0].label} – ${buckets[buckets.length - 1].label} · visão ${GRAN_LABEL[g]}`,
+  };
 }
 
 interface Clause {

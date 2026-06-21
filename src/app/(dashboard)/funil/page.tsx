@@ -1,10 +1,10 @@
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { PageHeader } from "@/components/patterns/page-header";
-import { StatCard } from "@/components/patterns/stat-card";
+import { TrendStat } from "@/components/patterns/trend-stat";
 import { FunnelChart } from "@/components/charts/funnel-chart";
-import { MonthlyInboundChart } from "@/components/charts/monthly-inbound-chart";
+import { InboundTrendChart } from "@/components/charts/inbound-trend-chart";
 import { getFunnel } from "@/lib/metrics/funnel";
-import { getInboundMonthly } from "@/lib/metrics/inbound-monthly";
+import { getInboundTrend } from "@/lib/metrics/inbound-trend";
 import { toCumulativeFunnel } from "@/lib/funnel";
 import { parseFilters } from "@/lib/filters";
 import { formatNumber, formatPercent } from "@/lib/utils";
@@ -27,7 +27,7 @@ export default async function FunilPage({
   searchParams: Promise<{ [k: string]: string | string[] | undefined }>;
 }) {
   const f = parseFilters(await searchParams);
-  const [mon, d] = await Promise.all([getInboundMonthly(f), getFunnel(f)]);
+  const [t, d] = await Promise.all([getInboundTrend(f), getFunnel(f)]);
   const funnel = toCumulativeFunnel(d.steps);
   const byPipeline = PIPELINE_ORDER.map((p) => ({
     pipeline: p,
@@ -37,55 +37,41 @@ export default async function FunilPage({
   return (
     <div className="flex animate-fade-in flex-col gap-6">
       <PageHeader
-        title="Inbound · Prospecções de imobiliárias"
-        description={`Resultados de ${mon.rangeLabel} — leads gerados, reuniões, taxa de ganho e ciclo médio (por data de criação do lead)`}
+        title="Prospecção de Imobiliárias"
+        description="Evolução dos leads de inbound gerados, reuniões, taxa de ganho e ciclo médio"
       />
 
-      {/* Primeira dobra: gráfico dinâmico */}
+      {/* Primeira dobra: tendência */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <TrendStat label="Novos Leads (período atual)" value={formatNumber(t.ref.novosLeads)} delta={t.deltaNovos} unit="%" />
+        <TrendStat label="Taxa de ganho" value={formatPercent(t.ref.taxaGanho, 2)} delta={t.deltaTaxa} unit=" pp" />
+        <TrendStat label="Ciclo médio de ganho" value={t.ref.ganhos ? `${formatNumber(t.ref.cicloMedioDias)} dias` : "—"} delta={t.deltaCiclo} unit="dias" goodWhenDown />
+      </div>
+
       <Card>
         <CardHeader
-          title="Leads inbound por mês"
-          description="Etapa inicial de contato com novas imobiliárias · ajusta com o filtro"
+          title="Tendência de leads inbound"
+          description={`Por data de criação do lead · ${t.rangeLabel}`}
+          action={
+            <span className="rounded-md bg-brand-soft px-2 py-1 text-xs font-medium capitalize text-brand">
+              {t.granularity === "day" ? "Diário" : t.granularity === "week" ? "Semanal" : t.granularity === "month" ? "Mensal" : "Trimestral"}
+            </span>
+          }
         />
         <CardBody>
-          <div className="flex flex-col gap-5 lg:flex-row">
-            <div className="min-w-0 flex-1">
-              <MonthlyInboundChart months={mon.months} />
-              <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted">
-                <span className="flex items-center gap-1.5"><Dot color="var(--brand-strong)" /> Novos Leads</span>
-                <span className="flex items-center gap-1.5"><Dot color="var(--brand)" /> Reuniões Realizadas</span>
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block h-0.5 w-4 rounded" style={{ background: "var(--success)" }} /> Taxa de ganho (%)
-                </span>
-              </div>
-            </div>
-            <div className="w-full shrink-0 lg:w-60">
-              <p className="mb-2 text-sm font-semibold text-fg">Ciclo médio de ganho</p>
-              <div className="flex max-h-[300px] flex-col gap-1.5 overflow-y-auto">
-                {mon.months.map((m) => (
-                  <div
-                    key={m.ym}
-                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
-                  >
-                    <span className="text-muted">{m.label}</span>
-                    <span className="tnum font-mono font-medium text-fg">
-                      {m.ganhos ? `${formatNumber(m.cicloMedioDias)} dias` : "—"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <InboundTrendChart buckets={t.buckets} />
+          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted">
+            <span className="flex items-center gap-1.5"><Dot color="var(--brand)" /> Novos Leads</span>
+            <span className="flex items-center gap-1.5"><Dot color="var(--chart-2)" /> Reuniões Realizadas</span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-0.5 w-4 rounded" style={{ background: "var(--success)" }} /> Taxa de ganho (%)
+            </span>
+            <span className="ml-auto text-faint">Coluna em destaque = período de referência (filtro)</span>
           </div>
         </CardBody>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Pico de leads" value={formatNumber(mon.picoLeads.value)} sub={`em ${mon.picoLeads.label}`} accent />
-        <StatCard label="Maior taxa de ganho" value={formatPercent(mon.maiorTaxa.value, 2)} sub={`em ${mon.maiorTaxa.label}`} />
-        <StatCard label="Menor ciclo médio" value={`${formatNumber(mon.menorCiclo.value)} dias`} sub={`em ${mon.menorCiclo.label}`} />
-      </div>
-
-      {/* Funil detalhado (movido para baixo) */}
+      {/* Funil detalhado */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-2">
           <CardHeader title="Funil de imobiliárias" description="Alcançou ao menos cada etapa" />
